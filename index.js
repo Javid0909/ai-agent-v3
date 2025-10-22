@@ -9,7 +9,7 @@ const credentials = {
   client_secret: process.env.GOOGLE_CLIENT_SECRET,
   redirect_uris: ["http://localhost:3000"],
 };
-const token = JSON.parse(fs.readFileSync("token.json", "utf8"));
+const token = JSON.parse(process.env.GOOGLE_TOKEN_JSON);
 
 // --- Step 2: Initialize OAuth2 client ---
 const oauth2Client = new google.auth.OAuth2(
