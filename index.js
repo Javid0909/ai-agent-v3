@@ -2,19 +2,25 @@ import { google } from "googleapis";
 import fetch from "node-fetch";
 import "dotenv/config";
 
-// --- Step 1: Authenticate with Service Account (via environment variable) ---
-const credentials = JSON.parse(process.env.GOOGLE_SERVICE_KEY);
+// --- Step 1: AUTH SETUP ---
 
-const auth = new google.auth.GoogleAuth({
-  credentials,
-  scopes: [
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/gmail.send",
-  ],
+// 🔹 Service Account (for Google Sheets)
+const serviceCredentials = JSON.parse(process.env.GOOGLE_SERVICE_KEY);
+const sheetsAuth = new google.auth.GoogleAuth({
+  credentials: serviceCredentials,
+  scopes: ["https://www.googleapis.com/auth/spreadsheets"],
 });
+const sheets = google.sheets({ version: "v4", auth: sheetsAuth });
 
-const gmail = google.gmail({ version: "v1", auth });
-const sheets = google.sheets({ version: "v4", auth });
+// 🔹 OAuth2 (for Gmail sending)
+const gmailToken = JSON.parse(process.env.GOOGLE_TOKEN_JSON);
+const oauth2Client = new google.auth.OAuth2(
+  process.env.GOOGLE_CLIENT_ID,
+  process.env.GOOGLE_CLIENT_SECRET,
+  "http://localhost:3000" // redirect URI from gettoken.js
+);
+oauth2Client.setCredentials(gmailToken);
+const gmail = google.gmail({ version: "v1", auth: oauth2Client });
 
 // --- Step 2: Spreadsheet details ---
 const spreadsheetId = "1evAhQ17tEBhd3f8OJwpD8umnTKnVPsuNKBQU9h2eHw0";
@@ -57,7 +63,7 @@ In the email:
   const data = await response.json();
   const text = data?.choices?.[0]?.message?.content?.trim() || "";
 
-  const htmlBody = `
+  return `
   <html>
     <body style="font-family:Arial,sans-serif;background-color:#f6f8fa;margin:0;padding:0;">
       <table width="100%" cellspacing="0" cellpadding="0" style="background-color:#f6f8fa;padding:40px 0;">
@@ -91,15 +97,13 @@ In the email:
       </table>
     </body>
   </html>`;
-
-  return htmlBody;
 }
 
 // --- Step 4: Send email ---
 async function sendEmail(to, firstName, lastName, fruit) {
   const htmlBody = await generateAIEmail(firstName, lastName, fruit);
+  const subject = "Welcome to our AI Agent Workshop";
 
-  const subject = `Welcome to our AI Agent Workshop`;
   const emailLines = [
     `To: ${to}`,
     `Subject: =?utf-8?B?${Buffer.from(subject).toString("base64")}?=`,
