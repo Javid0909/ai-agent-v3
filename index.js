@@ -223,3 +223,12 @@ async function startPolling() {
 }
 
 startPolling();
+import express from "express";
+
+// Start polling
+startPolling();
+
+// Minimal keep-alive server for Render
+const app = express();
+app.get("/", (req, res) => res.send("✅ AI Agent is running and polling Google Sheet..."));
+app.listen(3000, () => console.log("🌐 Keep-alive server running on port 3000"));
