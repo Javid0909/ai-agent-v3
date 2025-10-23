@@ -10,7 +10,9 @@ const sheetsAuth = new google.auth.GoogleAuth({
   credentials: serviceCredentials,
   scopes: ["https://www.googleapis.com/auth/spreadsheets"],
 });
-const sheets = google.sheets({ version: "v4", auth: sheetsAuth });
+const sheetsClient = await sheetsAuth.getClient();
+const sheets = google.sheets({ version: "v4", auth: sheetsClient });
+console.log("📄 Authenticated as:", serviceCredentials.client_email);
 
 // 🔹 OAuth2 (for Gmail sending)
 const gmailToken = JSON.parse(process.env.GOOGLE_TOKEN_JSON);
