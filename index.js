@@ -2,7 +2,7 @@ import { google } from "googleapis";
 import fetch from "node-fetch";
 import "dotenv/config";
 
-// --- Step 1: Authenticate with Service Account ---
+// --- Step 1: Authenticate with Service Account (via environment variable) ---
 const credentials = JSON.parse(process.env.GOOGLE_SERVICE_KEY);
 
 const auth = new google.auth.GoogleAuth({
