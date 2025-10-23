@@ -169,4 +169,57 @@ async function processSheet() {
 }
 
 // --- Step 6: Run agent ---
-processSheet();
+// --- Step 6: Polling loop ---
+async function startPolling() {
+  console.log("🕓 Starting sheet watcher...");
+
+  // Keep track of previously processed emails to avoid duplicates
+  let processed = new Set();
+
+  while (true) {
+    try {
+      console.log("🔄 Checking for new rows...");
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: `${sheetName}!A2:E`,
+      });
+
+      const rows = response.data.values || [];
+      for (let i = 0; i < rows.length; i++) {
+        const [rowNum, firstName, lastName, fruit, email] = rows[i];
+        const rowIndex = i + 2;
+
+        // Skip already processed or empty
+        if (!email || processed.has(email)) continue;
+
+        // Check if column F (status) is already marked
+        const statusRange = `${sheetName}!F${rowIndex}`;
+        const statusRes = await sheets.spreadsheets.values.get({
+          spreadsheetId,
+          range: statusRange,
+        });
+        const status = statusRes.data.values?.[0]?.[0];
+
+        if (!status || status.trim() === "") {
+          console.log(`🆕 New entry detected: ${email}`);
+          await sendEmail(email, firstName, lastName, fruit);
+          await sheets.spreadsheets.values.update({
+            spreadsheetId,
+            range: statusRange,
+            valueInputOption: "RAW",
+            requestBody: { values: [["✅ Sent"]] },
+          });
+          processed.add(email);
+          console.log(`✅ Updated status for ${email}`);
+        }
+      }
+    } catch (error) {
+      console.error("⚠️ Polling error:", error.message);
+    }
+
+    console.log("⏳ Waiting 60 seconds before next check...\n");
+    await new Promise((r) => setTimeout(r, 60 * 1000)); // 1 minute interval
+  }
+}
+
+startPolling();
