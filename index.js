@@ -4,20 +4,22 @@ import fetch from "node-fetch";
 import "dotenv/config";
 
 // --- Step 1: Load credentials and token ---
-const credentials = {
-  client_id: process.env.GOOGLE_CLIENT_ID,
-  client_secret: process.env.GOOGLE_CLIENT_SECRET,
-  redirect_uris: ["http://localhost:3000"],
-};
-const token = JSON.parse(process.env.GOOGLE_TOKEN_JSON);
+import { google } from "googleapis";
+import fetch from "node-fetch";
+import "dotenv/config";
 
-// --- Step 2: Initialize OAuth2 client ---
-const oauth2Client = new google.auth.OAuth2(
-  credentials.client_id,
-  credentials.client_secret,
-  credentials.redirect_uris[0]
-);
-oauth2Client.setCredentials(token);
+const credentials = JSON.parse(process.env.GOOGLE_SERVICE_KEY);
+
+const auth = new google.auth.GoogleAuth({
+  credentials,
+  scopes: [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/gmail.send"
+  ]
+});
+
+const gmail = google.gmail({ version: "v1", auth });
+const sheets = google.sheets({ version: "v4", auth });
 
 // --- Step 3: Create API clients ---
 const gmail = google.gmail({ version: "v1", auth: oauth2Client });
