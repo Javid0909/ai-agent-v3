@@ -1,35 +1,26 @@
 import { google } from "googleapis";
-import fs from "fs";
 import fetch from "node-fetch";
 import "dotenv/config";
 
-// --- Step 1: Load credentials and token ---
-import { google } from "googleapis";
-import fetch from "node-fetch";
-import "dotenv/config";
-
+// --- Step 1: Authenticate with Service Account ---
 const credentials = JSON.parse(process.env.GOOGLE_SERVICE_KEY);
 
 const auth = new google.auth.GoogleAuth({
   credentials,
   scopes: [
     "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/gmail.send"
-  ]
+    "https://www.googleapis.com/auth/gmail.send",
+  ],
 });
 
 const gmail = google.gmail({ version: "v1", auth });
 const sheets = google.sheets({ version: "v4", auth });
 
-// --- Step 3: Create API clients ---
-const gmail = google.gmail({ version: "v1", auth: oauth2Client });
-const sheets = google.sheets({ version: "v4", auth: oauth2Client });
-
-// --- Step 4: Spreadsheet details ---
+// --- Step 2: Spreadsheet details ---
 const spreadsheetId = "1evAhQ17tEBhd3f8OJwpD8umnTKnVPsuNKBQU9h2eHw0";
 const sheetName = "Book(Sheet1)";
 
-// --- Step 5: AI email generator ---
+// --- Step 3: AI email generator ---
 async function generateAIEmail(firstName, lastName, fruit) {
   console.log(`🧠 Generating AI email for ${firstName} ${lastName}...`);
 
@@ -66,7 +57,6 @@ In the email:
   const data = await response.json();
   const text = data?.choices?.[0]?.message?.content?.trim() || "";
 
-  // Wrap AI text into HTML design
   const htmlBody = `
   <html>
     <body style="font-family:Arial,sans-serif;background-color:#f6f8fa;margin:0;padding:0;">
@@ -105,7 +95,7 @@ In the email:
   return htmlBody;
 }
 
-// --- Step 6: Send email ---
+// --- Step 4: Send email ---
 async function sendEmail(to, firstName, lastName, fruit) {
   const htmlBody = await generateAIEmail(firstName, lastName, fruit);
 
@@ -133,7 +123,7 @@ async function sendEmail(to, firstName, lastName, fruit) {
   console.log(`📧 Email sent to ${to}`);
 }
 
-// --- Step 7: Process sheet ---
+// --- Step 5: Process Google Sheet ---
 async function processSheet() {
   console.log("🚀 Starting AI Email Agent...");
 
@@ -172,5 +162,5 @@ async function processSheet() {
   }
 }
 
-// --- Step 8: Run ---
+// --- Step 6: Run agent ---
 processSheet();
