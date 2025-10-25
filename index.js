@@ -217,7 +217,7 @@ async function startPolling() {
       console.error("⚠️ Polling error:", error.message);
     }
 
-    console.log("⏳ Waiting 60 seconds before next check...\n");
+    console.log("⏳ Waiting 300 seconds (5 minutes) before next check...\n");
     await new Promise((r) => setTimeout(r, 5 * 60 * 1000)); // 5 minutes interval
   }
 }
