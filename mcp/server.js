@@ -1,43 +1,53 @@
 // mcp/server.js
 import express from "express";
-import { tools } from "./tools.js";
+import bodyParser from "body-parser";
+import { sendEmail, processSheet } from "../index.js"; // Import from your main logic file
 
 const app = express();
-app.use(express.json());
+app.use(bodyParser.json());
 
-// --- Simple local MCP-like handler ---
-const MCPServer = {
-  tools: {},
-  addTool(name, description, handler) {
-    this.tools[name] = { description, handler };
-  },
-  async run(task) {
-    const { tool, input } = task;
-    const entry = this.tools[tool];
-    if (!entry) throw new Error(`Tool not found: ${tool}`);
-    return await entry.handler(input || {});
-  },
-};
+// --- Health Check (for Render & testing) ---
+app.get("/healthz", (req, res) => {
+  res.send("🧠 MCP Server is running and ready!");
+});
 
-// --- Register tools dynamically ---
-for (const [name, { description, handler }] of Object.entries(tools)) {
-  MCPServer.addTool(name, description, handler);
-}
+// --- Root Endpoint ---
+app.get("/", (req, res) => {
+  res.send("✅ MCP AI Email Agent is active (controlled mode)");
+});
 
-// --- REST endpoint ---
-app.post("/mcp/run", async (req, res) => {
+// --- Manual Control Endpoint ---
+app.post("/run", async (req, res) => {
   try {
     const { task } = req.body;
-    const result = await MCPServer.run(task);
-    res.json(result);
+
+    if (!task) {
+      return res.status(400).json({ error: "Missing 'task' in request body." });
+    }
+
+    console.log(`⚙️  MCP received task: ${task}`);
+
+    if (task === "processSheet") {
+      await processSheet();
+      return res.json({ status: "✅ Sheet processed successfully" });
+    }
+
+    if (task === "sendEmail") {
+      const { to, firstName, lastName, fruit } = req.body;
+      if (!to || !firstName) {
+        return res.status(400).json({ error: "Missing 'to' or 'firstName' in body" });
+      }
+      await sendEmail(to, firstName, lastName, fruit || "apple");
+      return res.json({ status: `📧 Email sent to ${to}` });
+    }
+
+    return res.status(400).json({ error: `Unknown task: ${task}` });
   } catch (err) {
-    console.error("MCP error:", err);
+    console.error("❌ MCP run error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// --- Start server ---
-const PORT = process.env.MCP_PORT || 3001;
-app.listen(PORT, () =>
-  console.log(`🧠 MCP Server (local) running on http://localhost:${PORT}`)
-);
+// --- Start MCP Server ---
+const PORT = process.env.PORT || 3000; // Render expects port 3000
+app.listen(PORT, () => console.log(`🌐 MCP Server running on port ${PORT}`));

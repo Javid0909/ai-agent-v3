@@ -103,6 +103,18 @@ In the email:
 
 // --- Step 4: Send email ---
 async function sendEmail(to, firstName, lastName, fruit) {
+  // ✅ Check if already sent
+  const sheetData = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: `${sheetName}!A2:F`,
+  });
+  const rows = sheetData.data.values || [];
+  const alreadySent = rows.some((r) => r[4] === to && r[5]?.includes("✅"));
+  if (alreadySent) {
+    console.log(`⚠️ Skipping ${to} (already marked as sent).`);
+    return;
+  }
+
   const htmlBody = await generateAIEmail(firstName, lastName, fruit);
   const subject = "Welcome to our AI Agent Workshop";
 
@@ -129,68 +141,48 @@ async function sendEmail(to, firstName, lastName, fruit) {
   console.log(`📧 Email sent to ${to}`);
 }
 
-// --- Step 5: Polling loop ---
-async function startPolling() {
-  console.log("🕓 Starting sheet watcher...");
+// --- Step 5: Process Sheet once ---
+async function processSheet() {
+  console.log("🚀 Processing sheet once...");
 
-  const processed = new Set();
-  const POLL_INTERVAL_MINUTES = 5;
+  const response = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: `${sheetName}!A2:E`,
+  });
 
-  while (true) {
-    try {
-      console.log("🔄 Checking for new rows...");
-      const response = await sheets.spreadsheets.values.get({
-        spreadsheetId,
-        range: `${sheetName}!A2:E`,
-      });
+  const rows = response.data.values || [];
+  if (!rows.length) {
+    console.log("⚠️ No data found in sheet.");
+    return;
+  }
 
-      const rows = response.data.values || [];
+  for (let i = 0; i < rows.length; i++) {
+    const [rowNum, firstName, lastName, fruit, email] = rows[i];
+    const rowIndex = i + 2;
+    if (!email) continue;
 
-      for (let i = 0; i < rows.length; i++) {
-        const [rowNum, firstName, lastName, fruit, email] = rows[i];
-        const rowIndex = i + 2;
-        if (!email) continue;
+    const statusRange = `${sheetName}!F${rowIndex}`;
+    const statusRes = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: statusRange,
+    });
+    const status = statusRes.data.values?.[0]?.[0];
 
-        const statusRange = `${sheetName}!F${rowIndex}`;
-        const statusRes = await sheets.spreadsheets.values.get({
-          spreadsheetId,
-          range: statusRange,
-        });
-        const status = statusRes.data.values?.[0]?.[0];
+    if (status?.includes("✅")) continue;
 
-        // ✅ Skip already sent or processed
-        if (status?.includes("✅") || processed.has(email)) continue;
+    await sendEmail(email, firstName, lastName, fruit);
 
-        console.log(`🆕 New entry detected: ${email}`);
-        await sendEmail(email, firstName, lastName, fruit);
+    const timestamp = new Date().toLocaleString("sv-SE");
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `${sheetName}!F${rowIndex}:G${rowIndex}`,
+      valueInputOption: "RAW",
+      requestBody: { values: [["✅ Sent", timestamp]] },
+    });
 
-        const timestamp = new Date().toLocaleString("sv-SE"); // Swedish format
-        await sheets.spreadsheets.values.update({
-          spreadsheetId,
-          range: `${sheetName}!F${rowIndex}:G${rowIndex}`,
-          valueInputOption: "RAW",
-          requestBody: { values: [["✅ Sent", timestamp]] },
-        });
-
-        processed.add(email);
-        console.log(`✅ Updated status for ${email}`);
-      }
-    } catch (error) {
-      console.error("⚠️ Polling error:", error.message);
-    }
-
-    console.log(`⏳ Waiting ${POLL_INTERVAL_MINUTES} minutes before next check...\n`);
-    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MINUTES * 60 * 1000));
+    console.log(`✅ Updated status for ${email}`);
   }
 }
 
-// --- Step 6: Express server + single polling instance ---
-import express from "express";
-
-startPolling(); // Only once
-
-const app = express();
-app.get("/", (req, res) => res.send("✅ AI Agent is running and polling Google Sheet..."));
-app.listen(3000, () => console.log("🌐 Keep-alive server running on port 3000"));
-
-export { sendEmail };
+// --- Step 6: Export functions (no auto run) ---
+export { sendEmail, processSheet };
