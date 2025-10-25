@@ -129,52 +129,12 @@ async function sendEmail(to, firstName, lastName, fruit) {
   console.log(`📧 Email sent to ${to}`);
 }
 
-// --- Step 5: Process Google Sheet ---
-async function processSheet() {
-  console.log("🚀 Starting AI Email Agent...");
-
-  const response = await sheets.spreadsheets.values.get({
-    spreadsheetId,
-    range: `${sheetName}!A2:E`,
-  });
-
-  const rows = response.data.values || [];
-  console.log(`📊 Found ${rows.length} rows.`);
-
-  if (!rows.length) {
-    console.log("⚠️ No data found in sheet.");
-    return;
-  }
-
-  for (let i = 0; i < rows.length; i++) {
-    const [rowNum, firstName, lastName, fruit, email] = rows[i];
-    if (!email) continue;
-
-    try {
-      await sendEmail(email, firstName, lastName, fruit);
-
-      const rowIndex = i + 2;
-      await sheets.spreadsheets.values.update({
-        spreadsheetId,
-        range: `${sheetName}!F${rowIndex}`,
-        valueInputOption: "RAW",
-        requestBody: { values: [["✅ Sent"]] },
-      });
-
-      console.log(`✅ Updated status for ${email}`);
-    } catch (error) {
-      console.error(`❌ Error for ${email}:`, error.message);
-    }
-  }
-}
-
-// --- Step 6: Run agent ---
-// --- Step 6: Polling loop ---
+// --- Step 5: Polling loop ---
 async function startPolling() {
   console.log("🕓 Starting sheet watcher...");
 
-  // Keep track of previously processed emails to avoid duplicates
-  let processed = new Set();
+  const processed = new Set();
+  const POLL_INTERVAL_MINUTES = 5;
 
   while (true) {
     try {
@@ -185,14 +145,12 @@ async function startPolling() {
       });
 
       const rows = response.data.values || [];
+
       for (let i = 0; i < rows.length; i++) {
         const [rowNum, firstName, lastName, fruit, email] = rows[i];
         const rowIndex = i + 2;
+        if (!email) continue;
 
-        // Skip already processed or empty
-        if (!email || processed.has(email)) continue;
-
-        // Check if column F (status) is already marked
         const statusRange = `${sheetName}!F${rowIndex}`;
         const statusRes = await sheets.spreadsheets.values.get({
           spreadsheetId,
@@ -200,36 +158,39 @@ async function startPolling() {
         });
         const status = statusRes.data.values?.[0]?.[0];
 
-        if (!status || status.trim() === "") {
-          console.log(`🆕 New entry detected: ${email}`);
-          await sendEmail(email, firstName, lastName, fruit);
-          await sheets.spreadsheets.values.update({
-            spreadsheetId,
-            range: statusRange,
-            valueInputOption: "RAW",
-            requestBody: { values: [["✅ Sent"]] },
-          });
-          processed.add(email);
-          console.log(`✅ Updated status for ${email}`);
-        }
+        // ✅ Skip already sent or processed
+        if (status?.includes("✅") || processed.has(email)) continue;
+
+        console.log(`🆕 New entry detected: ${email}`);
+        await sendEmail(email, firstName, lastName, fruit);
+
+        const timestamp = new Date().toLocaleString("sv-SE"); // Swedish format
+        await sheets.spreadsheets.values.update({
+          spreadsheetId,
+          range: `${sheetName}!F${rowIndex}:G${rowIndex}`,
+          valueInputOption: "RAW",
+          requestBody: { values: [["✅ Sent", timestamp]] },
+        });
+
+        processed.add(email);
+        console.log(`✅ Updated status for ${email}`);
       }
     } catch (error) {
       console.error("⚠️ Polling error:", error.message);
     }
 
-    console.log("⏳ Waiting 300 seconds (5 minutes) before next check...\n");
-    await new Promise((r) => setTimeout(r, 5 * 60 * 1000)); // 5 minutes interval
+    console.log(`⏳ Waiting ${POLL_INTERVAL_MINUTES} minutes before next check...\n`);
+    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MINUTES * 60 * 1000));
   }
 }
 
-startPolling();
+// --- Step 6: Express server + single polling instance ---
 import express from "express";
 
-// Start polling
-startPolling();
+startPolling(); // Only once
 
-// Minimal keep-alive server for Render
 const app = express();
 app.get("/", (req, res) => res.send("✅ AI Agent is running and polling Google Sheet..."));
 app.listen(3000, () => console.log("🌐 Keep-alive server running on port 3000"));
-export { sendEmail, processSheet };
+
+export { sendEmail };
