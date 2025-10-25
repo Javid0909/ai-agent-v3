@@ -218,7 +218,7 @@ async function startPolling() {
     }
 
     console.log("⏳ Waiting 60 seconds before next check...\n");
-    await new Promise((r) => setTimeout(r, 60 * 1000)); // 1 minute interval
+    await new Promise((r) => setTimeout(r, 5 * 60 * 1000)); // 5 minutes interval
   }
 }
 
@@ -232,3 +232,4 @@ startPolling();
 const app = express();
 app.get("/", (req, res) => res.send("✅ AI Agent is running and polling Google Sheet..."));
 app.listen(3000, () => console.log("🌐 Keep-alive server running on port 3000"));
+export { sendEmail, processSheet };
