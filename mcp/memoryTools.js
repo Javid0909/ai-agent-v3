@@ -1,4 +1,3 @@
-// mcp/memoryTools.js
 import { Pinecone } from "@pinecone-database/pinecone";
 import fetch from "node-fetch";
 import "dotenv/config";
@@ -9,8 +8,7 @@ import "dotenv/config";
 const pinecone = new Pinecone({
   apiKey: process.env.PINECONE_API_KEY,
 });
-
-const index = pinecone.Index(process.env.PINECONE_INDEX || "agent-memory");
+const index = pinecone.Index(process.env.PINECONE_INDEX || "ai-email-agent-v2");
 
 // ============================
 // 🧠 Store structured memory
@@ -23,29 +21,29 @@ export async function storeMemory(
   metadata = {}
 ) {
   try {
-    // 1️⃣ Create embedding using llama-text-embed-v2 (dimension 1024)
-    const embedRes = await fetch("https://openrouter.ai/api/v1/embeddings", {
+    console.log("🚀 Creating embedding via OpenAI...");
+
+    const embedRes = await fetch("https://api.openai.com/v1/embeddings", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "meta-llama/llama-3.1-embed", // ✅ matches your Pinecone config (1024 dim)
+        model: "text-embedding-3-small",
         input: text,
       }),
     });
 
-    const embedData = await embedRes.json();
-
-    if (!embedData?.data?.[0]?.embedding) {
-      console.error("❌ No embedding returned:", embedData);
-      return "❌ Failed to generate embedding.";
+    const data = await embedRes.json();
+    const embedding = data?.data?.[0]?.embedding;
+    if (!embedding?.length) {
+      console.error("❌ No embedding returned:", data);
+      return;
     }
 
-    const embedding = embedData.data[0].embedding;
+    console.log(`🧩 Embedding vector length: ${embedding.length}`);
 
-    // 2️⃣ Upsert into Pinecone
     await index.upsert([
       {
         id,
@@ -61,10 +59,8 @@ export async function storeMemory(
     ]);
 
     console.log(`✅ Memory stored in Pinecone (ID: ${id})`);
-    return "✅ Memory stored in Pinecone!";
   } catch (err) {
     console.error("❌ Error storing memory in Pinecone:", err.message);
-    return "❌ Failed to store memory in Pinecone.";
   }
 }
 
@@ -73,38 +69,38 @@ export async function storeMemory(
 // ============================
 export async function readMemories(queryText) {
   try {
-    // 1️⃣ Create embedding for the query (same model)
-    const embedRes = await fetch("https://openrouter.ai/api/v1/embeddings", {
+    console.log("🔍 Creating query embedding via OpenAI...");
+    const embedRes = await fetch("https://api.openai.com/v1/embeddings", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "meta-llama/llama-3.1-embed",
+        model: "text-embedding-3-small",
         input: queryText,
       }),
     });
 
-    const embedData = await embedRes.json();
-    if (!embedData?.data?.[0]?.embedding) {
-      console.error("❌ No query embedding returned:", embedData);
+    const data = await embedRes.json();
+    const queryEmbedding = data?.data?.[0]?.embedding;
+    if (!queryEmbedding?.length) {
+      console.error("❌ No embedding returned for query:", data);
       return [];
     }
 
-    const queryEmbedding = embedData.data[0].embedding;
+    console.log(`🧠 Query vector length: ${queryEmbedding.length}`);
 
-    // 2️⃣ Query Pinecone
     const results = await index.query({
       vector: queryEmbedding,
       topK: 5,
       includeMetadata: true,
     });
 
-    console.log(`🔍 Found ${results.matches.length} similar memories`);
-    return results.matches.map((m) => m.metadata);
+    console.log(`📄 Retrieved ${results.matches?.length || 0} memories.`);
+    return results.matches?.map((m) => m.metadata) || [];
   } catch (err) {
-    console.error("❌ Error retrieving from Pinecone:", err.message);
+    console.error("❌ Error reading memories:", err.message);
     return [];
   }
 }

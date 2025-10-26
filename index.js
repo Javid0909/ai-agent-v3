@@ -7,8 +7,6 @@ import "dotenv/config";
 // ===============================
 //  STEP 1️⃣ AUTHENTICATION SETUP
 // ===============================
-
-// 🔹 Service Account (for Google Sheets)
 const serviceCredentials = JSON.parse(process.env.GOOGLE_SERVICE_KEY);
 const sheetsAuth = new google.auth.GoogleAuth({
   credentials: serviceCredentials,
@@ -18,12 +16,11 @@ const sheetsClient = await sheetsAuth.getClient();
 const sheets = google.sheets({ version: "v4", auth: sheetsClient });
 console.log("📄 Authenticated as:", serviceCredentials.client_email);
 
-// 🔹 OAuth2 (for Gmail sending)
 const gmailToken = JSON.parse(process.env.GOOGLE_TOKEN_JSON);
 const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
   process.env.GOOGLE_CLIENT_SECRET,
-  "http://localhost:3000" // redirect URI from gettoken.js
+  "http://localhost:3000"
 );
 oauth2Client.setCredentials(gmailToken);
 const gmail = google.gmail({ version: "v1", auth: oauth2Client });
@@ -157,7 +154,7 @@ async function sendEmail(to, firstName, lastName, fruit) {
     "gmail",
     {
       recipient: to,
-      subject: "AI Agent Workshop",
+      subject,
       sentAt: new Date().toISOString(),
     }
   );
@@ -191,7 +188,6 @@ async function processSheet() {
       range: statusRange,
     });
     const status = statusRes.data.values?.[0]?.[0];
-
     if (status?.includes("✅")) continue;
 
     await sendEmail(email, firstName, lastName, fruit);
@@ -209,13 +205,30 @@ async function processSheet() {
 }
 
 // ===============================
-//  STEP 6️⃣ EXPORT FUNCTIONS (no auto-run)
+//  STEP 6️⃣ SCHEDULER (every 5 minutes)
 // ===============================
-export { sendEmail, processSheet };
+const MINUTES = Number(process.env.RUN_EVERY_MINUTES || 5);
+let running = false;
 
-// Manual run for local testing only
-if (process.env.MANUAL_RUN === "true") {
-  console.log("⚙️ Manual run initiated...");
-  await processSheet();
-  console.log("🏁 Manual run completed!");
+async function tick() {
+  if (running) {
+    console.log("⏳ Previous run still in progress. Skipping this tick.");
+    return;
+  }
+  running = true;
+  console.log(`⏱️ Tick started @ ${new Date().toISOString()}`);
+  try {
+    await processSheet();
+  } catch (e) {
+    console.error("❌ Tick failed:", e?.message || e);
+  } finally {
+    running = false;
+    console.log(`✅ Tick finished @ ${new Date().toISOString()}`);
+  }
 }
+
+// Run once immediately, then every N minutes
+await tick();
+setInterval(tick, MINUTES * 60 * 1000);
+
+export { sendEmail, processSheet };
