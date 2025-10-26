@@ -1,8 +1,12 @@
+// index.js
+import { storeMemory } from "./mcp/memoryTools.js";
 import { google } from "googleapis";
 import fetch from "node-fetch";
 import "dotenv/config";
 
-// --- Step 1: AUTH SETUP ---
+// ===============================
+//  STEP 1️⃣ AUTHENTICATION SETUP
+// ===============================
 
 // 🔹 Service Account (for Google Sheets)
 const serviceCredentials = JSON.parse(process.env.GOOGLE_SERVICE_KEY);
@@ -24,11 +28,15 @@ const oauth2Client = new google.auth.OAuth2(
 oauth2Client.setCredentials(gmailToken);
 const gmail = google.gmail({ version: "v1", auth: oauth2Client });
 
-// --- Step 2: Spreadsheet details ---
+// ===============================
+//  STEP 2️⃣ SPREADSHEET DETAILS
+// ===============================
 const spreadsheetId = "1evAhQ17tEBhd3f8OJwpD8umnTKnVPsuNKBQU9h2eHw0";
 const sheetName = "Book(Sheet1)";
 
-// --- Step 3: AI email generator ---
+// ===============================
+//  STEP 3️⃣ AI EMAIL GENERATION
+// ===============================
 async function generateAIEmail(firstName, lastName, fruit) {
   console.log(`🧠 Generating AI email for ${firstName} ${lastName}...`);
 
@@ -101,9 +109,11 @@ In the email:
   </html>`;
 }
 
-// --- Step 4: Send email ---
+// ===============================
+//  STEP 4️⃣ EMAIL SENDING
+// ===============================
 async function sendEmail(to, firstName, lastName, fruit) {
-  // ✅ Check if already sent
+  // ✅ Skip if already marked as sent
   const sheetData = await sheets.spreadsheets.values.get({
     spreadsheetId,
     range: `${sheetName}!A2:F`,
@@ -115,6 +125,7 @@ async function sendEmail(to, firstName, lastName, fruit) {
     return;
   }
 
+  // 🧠 Generate personalized email
   const htmlBody = await generateAIEmail(firstName, lastName, fruit);
   const subject = "Welcome to our AI Agent Workshop";
 
@@ -139,9 +150,24 @@ async function sendEmail(to, firstName, lastName, fruit) {
   });
 
   console.log(`📧 Email sent to ${to}`);
+
+  // 🧠 Store memory after each email
+  await storeMemory(
+    Date.now().toString(),
+    `Email sent to ${firstName} ${lastName} (${to}) about ${fruit} AI Agent Workshop.`,
+    "email",
+    "gmail",
+    {
+      recipient: to,
+      subject: "AI Agent Workshop",
+      sentAt: new Date().toISOString(),
+    }
+  );
 }
 
-// --- Step 5: Process Sheet once ---
+// ===============================
+//  STEP 5️⃣ SHEET PROCESSING
+// ===============================
 async function processSheet() {
   console.log("🚀 Processing sheet once...");
 
@@ -184,5 +210,13 @@ async function processSheet() {
   }
 }
 
-// --- Step 6: Export functions (no auto run) ---
+// ===============================
+//  STEP 6️⃣ AUTO-RUN AGENT
+// ===============================
 export { sendEmail, processSheet };
+
+if (process.argv[1].includes("index.js")) {
+  console.log("⚙️  Starting end-to-end AI Email Agent...");
+  await processSheet();
+  console.log("🏁 All done — emails sent and stored in memory!");
+}

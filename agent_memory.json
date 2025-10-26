@@ -1,0 +1,31 @@
+[
+  {
+    "id": "1",
+    "text": "This is my first memory about Gmail automation in GenAition.",
+    "timestamp": "2025-10-26T12:23:28.884Z"
+  },
+  {
+    "id": "1761485393457",
+    "text": "Email sent to Johannes Andersson (javid.valiyev@genaition.io) about Apricot AI Agent Workshop.",
+    "type": "email",
+    "source": "gmail",
+    "metadata": {
+      "recipient": "javid.valiyev@genaition.io",
+      "subject": "AI Agent Workshop",
+      "sentAt": "2025-10-26T13:29:53.458Z"
+    },
+    "timestamp": "2025-10-26T13:29:53.474Z"
+  },
+  {
+    "id": "1761485398390",
+    "text": "Email sent to Javid Valiyev (valiyev.javid@gmail.com) about Orange AI Agent Workshop.",
+    "type": "email",
+    "source": "gmail",
+    "metadata": {
+      "recipient": "valiyev.javid@gmail.com",
+      "subject": "AI Agent Workshop",
+      "sentAt": "2025-10-26T13:29:58.390Z"
+    },
+    "timestamp": "2025-10-26T13:29:58.391Z"
+  }
+]
