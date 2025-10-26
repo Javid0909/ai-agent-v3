@@ -1,38 +1,38 @@
-// mcp/memoryTools.js
 import { Pinecone } from "@pinecone-database/pinecone";
 import fetch from "node-fetch";
 import "dotenv/config";
 
 // ============================
-// 🔹 Startup Validation
-// ============================
-if (!process.env.OPENAI_API_KEY)
-  console.warn("⚠️ Missing OPENAI_API_KEY — embeddings will fail.");
-if (!process.env.PINECONE_API_KEY)
-  console.warn("⚠️ Missing PINECONE_API_KEY — Pinecone won't store data.");
-if (!process.env.PINECONE_INDEX)
-  console.warn("⚠️ Missing PINECONE_INDEX — defaulting to ai-email-agent-v2.");
-
-// ============================
 // 🔹 Pinecone Setup
 // ============================
+if (!process.env.PINECONE_API_KEY) {
+  console.error("❌ Missing PINECONE_API_KEY in environment!");
+}
+if (!process.env.OPENAI_API_KEY) {
+  console.error("❌ Missing OPENAI_API_KEY in environment!");
+}
+
+const pinecone = new Pinecone({
+  apiKey: process.env.PINECONE_API_KEY,
+});
+
+const indexName = process.env.PINECONE_INDEX || "ai-email-agent-v2";
 let index;
 try {
-  const pinecone = new Pinecone({
-    apiKey: process.env.PINECONE_API_KEY,
-  });
-  index = pinecone.Index(process.env.PINECONE_INDEX || "ai-email-agent-v2");
-  console.log(`📦 Connected to Pinecone index: ${process.env.PINECONE_INDEX || "ai-email-agent-v2"}`);
+  index = pinecone.Index(indexName);
+  console.log(`📦 Connected to Pinecone index: ${indexName}`);
 } catch (err) {
-  console.error("❌ Failed to initialize Pinecone:", err.message);
+  console.error("❌ Failed to connect to Pinecone:", err.message);
 }
 
 // ============================
-// 🧩 Helper: Create OpenAI Embedding
+// 🧠 Store structured memory
 // ============================
-async function getEmbedding(text) {
+export async function storeMemory(id, text, type = "general", source = "manual", metadata = {}) {
   try {
-    const res = await fetch("https://api.openai.com/v1/embeddings", {
+    console.log("🚀 Creating embedding via OpenAI...");
+
+    const embedRes = await fetch("https://api.openai.com/v1/embeddings", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
@@ -44,48 +44,20 @@ async function getEmbedding(text) {
       }),
     });
 
-    if (!res.ok) {
-      const errText = await res.text();
-      console.error(`❌ OpenAI API Error (${res.status}):`, errText);
-      return null;
+    const embedData = await embedRes.json();
+
+    if (!embedRes.ok) {
+      console.error("❌ OpenAI API error:", embedData);
+      return;
     }
 
-    const data = await res.json();
-    const embedding = data?.data?.[0]?.embedding;
-
+    const embedding = embedData?.data?.[0]?.embedding;
     if (!embedding?.length) {
-      console.error("❌ No embedding returned:", data);
-      return null;
+      console.error("❌ No embedding returned:", embedData);
+      return;
     }
 
-    return embedding;
-  } catch (err) {
-    console.error("❌ Embedding request failed:", err.message);
-    return null;
-  }
-}
-
-// ============================
-// 🧠 Store structured memory
-// ============================
-export async function storeMemory(
-  id,
-  text,
-  type = "general",
-  source = "manual",
-  metadata = {}
-) {
-  if (!index) {
-    console.error("❌ Pinecone index not initialized — skipping memory store.");
-    return;
-  }
-
-  try {
-    console.log("🧠 Creating embedding via OpenAI...");
-    const embedding = await getEmbedding(text);
-    if (!embedding) return;
-
-    console.log(`🧩 Embedding vector length: ${embedding.length}`);
+    console.log(`🧩 Embedding created (vector length: ${embedding.length})`);
 
     await index.upsert([
       {
@@ -111,15 +83,26 @@ export async function storeMemory(
 // 🔍 Retrieve stored memories
 // ============================
 export async function readMemories(queryText) {
-  if (!index) {
-    console.error("❌ Pinecone index not initialized — skipping read.");
-    return [];
-  }
-
   try {
     console.log("🔍 Creating query embedding via OpenAI...");
-    const queryEmbedding = await getEmbedding(queryText);
-    if (!queryEmbedding) return [];
+    const embedRes = await fetch("https://api.openai.com/v1/embeddings", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "text-embedding-3-small",
+        input: queryText,
+      }),
+    });
+
+    const data = await embedRes.json();
+    const queryEmbedding = data?.data?.[0]?.embedding;
+    if (!queryEmbedding?.length) {
+      console.error("❌ No embedding returned for query:", data);
+      return [];
+    }
 
     console.log(`🧠 Query vector length: ${queryEmbedding.length}`);
 
@@ -129,9 +112,8 @@ export async function readMemories(queryText) {
       includeMetadata: true,
     });
 
-    const matches = results.matches || [];
-    console.log(`📄 Retrieved ${matches.length} memories.`);
-    return matches.map((m) => m.metadata);
+    console.log(`📄 Retrieved ${results.matches?.length || 0} memories.`);
+    return results.matches?.map((m) => m.metadata) || [];
   } catch (err) {
     console.error("❌ Error reading memories:", err.message);
     return [];
