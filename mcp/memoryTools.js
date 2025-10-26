@@ -18,11 +18,32 @@ const pinecone = new Pinecone({
 
 const indexName = process.env.PINECONE_INDEX || "ai-email-agent-v2";
 let index;
-try {
-  index = pinecone.Index(indexName);
-  console.log(`📦 Connected to Pinecone index: ${indexName}`);
-} catch (err) {
-  console.error("❌ Failed to connect to Pinecone:", err.message);
+
+async function initIndex() {
+  try {
+    index = pinecone.Index(indexName);
+    console.log(`📦 Connected to Pinecone index: ${indexName}`);
+  } catch (err) {
+    console.error("❌ Failed to connect to Pinecone:", err.message);
+  }
+}
+await initIndex();
+
+// ============================
+// 🛠 Helper: Retry wrapper
+// ============================
+async function fetchWithRetry(url, options, retries = 3, delay = 2000) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const res = await fetch(url, options);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res;
+    } catch (err) {
+      console.warn(`⚠️ Fetch attempt ${i + 1} failed: ${err.message}`);
+      if (i === retries - 1) throw err;
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
 }
 
 // ============================
@@ -32,7 +53,7 @@ export async function storeMemory(id, text, type = "general", source = "manual",
   try {
     console.log("🚀 Creating embedding via OpenAI...");
 
-    const embedRes = await fetch("https://api.openai.com/v1/embeddings", {
+    const embedRes = await fetchWithRetry("https://api.openai.com/v1/embeddings", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
@@ -45,13 +66,8 @@ export async function storeMemory(id, text, type = "general", source = "manual",
     });
 
     const embedData = await embedRes.json();
-
-    if (!embedRes.ok) {
-      console.error("❌ OpenAI API error:", embedData);
-      return;
-    }
-
     const embedding = embedData?.data?.[0]?.embedding;
+
     if (!embedding?.length) {
       console.error("❌ No embedding returned:", embedData);
       return;
@@ -75,7 +91,7 @@ export async function storeMemory(id, text, type = "general", source = "manual",
 
     console.log(`✅ Memory stored in Pinecone (ID: ${id})`);
   } catch (err) {
-    console.error("❌ Error storing memory in Pinecone:", err.message);
+    console.error("❌ Error storing memory in Pinecone:", err.message || err);
   }
 }
 
@@ -85,7 +101,7 @@ export async function storeMemory(id, text, type = "general", source = "manual",
 export async function readMemories(queryText) {
   try {
     console.log("🔍 Creating query embedding via OpenAI...");
-    const embedRes = await fetch("https://api.openai.com/v1/embeddings", {
+    const embedRes = await fetchWithRetry("https://api.openai.com/v1/embeddings", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
@@ -115,7 +131,7 @@ export async function readMemories(queryText) {
     console.log(`📄 Retrieved ${results.matches?.length || 0} memories.`);
     return results.matches?.map((m) => m.metadata) || [];
   } catch (err) {
-    console.error("❌ Error reading memories:", err.message);
+    console.error("❌ Error reading memories:", err.message || err);
     return [];
   }
 }

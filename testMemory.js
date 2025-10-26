@@ -1,15 +1,6 @@
-import { storeMemory, readMemories } from "./mcp/memoryTools.js";
+// testMemory.js
+import { storeMemory } from "./mcp/memoryTools.js";
 
-console.log("🚀 Testing OpenAI embeddings + Pinecone memory write...");
+await storeMemory("test1", "Hello world test memory", "test", "manual");
 
-const run = async () => {
-  const id = "memory-test-1";
-  const text = "GenAition builds real AI agents for workflow automation.";
-
-  await storeMemory(id, text);
-
-  const results = await readMemories("What does GenAition build?");
-  console.log("🧾 Retrieved memories:", results);
-};
-
-run();
+process.exit();
