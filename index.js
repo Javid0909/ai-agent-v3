@@ -110,6 +110,17 @@ In the email:
 //  STEP 4️⃣ EMAIL SENDING
 // ===============================
 async function sendEmail(to, firstName, lastName, fruit) {
+  const sheetData = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: `${sheetName}!A2:F`,
+  });
+  const rows = sheetData.data.values || [];
+  const alreadySent = rows.some((r) => r[4] === to && r[5]?.includes("✅"));
+  if (alreadySent) {
+    console.log(`⚠️ Skipping ${to} (already marked as sent).`);
+    return;
+  }
+
   const htmlBody = await generateAIEmail(firstName, lastName, fruit);
   const subject = "Welcome to our AI Agent Workshop";
 
@@ -150,7 +161,7 @@ async function sendEmail(to, firstName, lastName, fruit) {
 }
 
 // ===============================
-//  STEP 5️⃣ SHEET PROCESSING (with anti-duplicate lock)
+//  STEP 5️⃣ SHEET PROCESSING
 // ===============================
 async function processSheet() {
   console.log("🚀 Processing sheet once...");
@@ -177,43 +188,19 @@ async function processSheet() {
       range: statusRange,
     });
     const status = statusRes.data.values?.[0]?.[0];
+    if (status?.includes("✅")) continue;
 
-    // Skip if already sent or currently being processed
-    if (status?.includes("✅") || status?.includes("🕓")) {
-      console.log(`⚠️ Skipping ${email} (status: ${status || "none"})`);
-      continue;
-    }
+    await sendEmail(email, firstName, lastName, fruit);
 
-    // Mark as in progress to prevent double-send
+    const timestamp = new Date().toLocaleString("sv-SE");
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: `${sheetName}!F${rowIndex}`,
+      range: `${sheetName}!F${rowIndex}:G${rowIndex}`,
       valueInputOption: "RAW",
-      requestBody: { values: [["🕓 Sending..."]] },
+      requestBody: { values: [["✅ Sent", timestamp]] },
     });
-    console.log(`🕓 Marked ${email} as Sending...`);
 
-    try {
-      await sendEmail(email, firstName, lastName, fruit);
-
-      const timestamp = new Date().toLocaleString("sv-SE");
-      await sheets.spreadsheets.values.update({
-        spreadsheetId,
-        range: `${sheetName}!F${rowIndex}:G${rowIndex}`,
-        valueInputOption: "RAW",
-        requestBody: { values: [["✅ Sent", timestamp]] },
-      });
-      console.log(`✅ Updated status for ${email}`);
-    } catch (err) {
-      console.error(`❌ Failed to send to ${email}:`, err.message);
-      // reset status if failed
-      await sheets.spreadsheets.values.update({
-        spreadsheetId,
-        range: `${sheetName}!F${rowIndex}`,
-        valueInputOption: "RAW",
-        requestBody: { values: [["❌ Failed"]] },
-      });
-    }
+    console.log(`✅ Updated status for ${email}`);
   }
 }
 
