@@ -32,7 +32,7 @@ const spreadsheetId = "1evAhQ17tEBhd3f8OJwpD8umnTKnVPsuNKBQU9h2eHw0";
 const sheetName = "Book(Sheet1)";
 
 // ===============================
-//  STEP 3️⃣ EMAIL GENERATION (OpenRouter)
+//  STEP 3️⃣ AI EMAIL GENERATION
 // ===============================
 async function generateAIEmail(firstName, lastName, fruit) {
   console.log(`🧠 Generating AI email for ${firstName} ${lastName}...`);
@@ -110,115 +110,102 @@ In the email:
 //  STEP 4️⃣ EMAIL SENDING
 // ===============================
 async function sendEmail(to, firstName, lastName, fruit) {
-  try {
-    console.log(`📤 Preparing to send email to ${to}...`);
-
-    const htmlBody = await generateAIEmail(firstName, lastName, fruit);
-    const subject = "Welcome to our AI Agent Workshop";
-
-    const emailLines = [
-      `To: ${to}`,
-      `Subject: =?utf-8?B?${Buffer.from(subject).toString("base64")}?=`,
-      "Content-Type: text/html; charset=UTF-8",
-      "",
-      htmlBody,
-    ];
-
-    const email = emailLines.join("\n");
-    const encodedMessage = Buffer.from(email)
-      .toString("base64")
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/, "");
-
-    await gmail.users.messages.send({
-      userId: "me",
-      requestBody: { raw: encodedMessage },
-    });
-
-    console.log(`📧 Email sent to ${to}`);
-
-    // 🧠 Store memory in Pinecone
-    await storeMemory(
-      Date.now().toString(),
-      `Email sent to ${firstName} ${lastName} (${to}) about ${fruit} AI Agent Workshop.`,
-      "email",
-      "gmail",
-      {
-        recipient: to,
-        subject,
-        sentAt: new Date().toISOString(),
-      }
-    );
-
-    console.log(`🧠 Memory stored in Pinecone for ${to}`);
-  } catch (err) {
-    console.error(`❌ Error sending email to ${to}:`, err.message || err);
+  const sheetData = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: `${sheetName}!A2:F`,
+  });
+  const rows = sheetData.data.values || [];
+  const alreadySent = rows.some((r) => r[4] === to && r[5]?.includes("✅"));
+  if (alreadySent) {
+    console.log(`⚠️ Skipping ${to} (already marked as sent).`);
+    return;
   }
+
+  const htmlBody = await generateAIEmail(firstName, lastName, fruit);
+  const subject = "Welcome to our AI Agent Workshop";
+
+  const emailLines = [
+    `To: ${to}`,
+    `Subject: =?utf-8?B?${Buffer.from(subject).toString("base64")}?=`,
+    "Content-Type: text/html; charset=UTF-8",
+    "",
+    htmlBody,
+  ];
+
+  const email = emailLines.join("\n");
+  const encodedMessage = Buffer.from(email)
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+
+  await gmail.users.messages.send({
+    userId: "me",
+    requestBody: { raw: encodedMessage },
+  });
+
+  console.log(`📧 Email sent to ${to}`);
+
+  // 🧠 Store memory in Pinecone
+  await storeMemory(
+    Date.now().toString(),
+    `Email sent to ${firstName} ${lastName} (${to}) about ${fruit} AI Agent Workshop.`,
+    "email",
+    "gmail",
+    {
+      recipient: to,
+      subject,
+      sentAt: new Date().toISOString(),
+    }
+  );
 }
 
 // ===============================
-//  STEP 5️⃣ SHEET PROCESSING (debug ready)
+//  STEP 5️⃣ SHEET PROCESSING
 // ===============================
 async function processSheet() {
   console.log("🚀 Processing sheet once...");
 
-  try {
-    const response = await sheets.spreadsheets.values.get({
+  const response = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: `${sheetName}!A2:E`,
+  });
+
+  const rows = response.data.values || [];
+  if (!rows.length) {
+    console.log("⚠️ No data found in sheet.");
+    return;
+  }
+
+  for (let i = 0; i < rows.length; i++) {
+    const [rowNum, firstName, lastName, fruit, email] = rows[i];
+    const rowIndex = i + 2;
+    if (!email) continue;
+
+    const statusRange = `${sheetName}!F${rowIndex}`;
+    const statusRes = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: `${sheetName}!A2:E`,
+      range: statusRange,
+    });
+    const status = statusRes.data.values?.[0]?.[0];
+    if (status?.includes("✅")) continue;
+
+    await sendEmail(email, firstName, lastName, fruit);
+
+    const timestamp = new Date().toLocaleString("sv-SE");
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `${sheetName}!F${rowIndex}:G${rowIndex}`,
+      valueInputOption: "RAW",
+      requestBody: { values: [["✅ Sent", timestamp]] },
     });
 
-    const rows = response.data.values || [];
-    console.log(`📊 Found ${rows.length} rows in sheet "${sheetName}".`);
-
-    if (!rows.length) {
-      console.log("⚠️ No data found in sheet.");
-      return;
-    }
-
-    for (let i = 0; i < rows.length; i++) {
-      const [rowNum, firstName, lastName, fruit, email] = rows[i] || [];
-      const rowIndex = i + 2;
-      console.log(`➡️ Checking row ${rowIndex}:`, { firstName, lastName, fruit, email });
-
-      if (!email || !email.includes("@")) {
-        console.log(`⚠️ Row ${rowIndex} skipped — invalid or missing email.`);
-        continue;
-      }
-
-      const statusRange = `${sheetName}!F${rowIndex}`;
-      const statusRes = await sheets.spreadsheets.values.get({
-        spreadsheetId,
-        range: statusRange,
-      });
-      const status = statusRes.data.values?.[0]?.[0];
-
-      if (status?.includes("✅")) {
-        console.log(`⏩ Row ${rowIndex} already marked as sent.`);
-        continue;
-      }
-
-      console.log(`📤 Sending email to ${email}...`);
-      await sendEmail(email, firstName, lastName, fruit);
-
-      const timestamp = new Date().toLocaleString("sv-SE");
-      await sheets.spreadsheets.values.update({
-        spreadsheetId,
-        range: `${sheetName}!F${rowIndex}:G${rowIndex}`,
-        valueInputOption: "RAW",
-        requestBody: { values: [["✅ Sent", timestamp]] },
-      });
-
-      console.log(`✅ Updated status for ${email}`);
-    }
-  } catch (err) {
-    console.error("❌ Error in processSheet():", err.message || err);
+    console.log(`✅ Updated status for ${email}`);
   }
 }
 
 // ===============================
-//  STEP 6️⃣ SCHEDULER
+//  STEP 6️⃣ SCHEDULER (every 5 minutes)
 // ===============================
 const MINUTES = Number(process.env.RUN_EVERY_MINUTES || 5);
 let running = false;
@@ -240,8 +227,9 @@ async function tick() {
   }
 }
 
-// Run immediately and schedule next runs
+// Run once immediately, then every N minutes
 await tick();
 setInterval(tick, MINUTES * 60 * 1000);
 
 export { sendEmail, processSheet };
+
