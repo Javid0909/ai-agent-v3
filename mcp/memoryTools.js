@@ -1,11 +1,20 @@
 // mcp/memoryTools.js
-import fs from "fs";
-import path from "path";
+import { Pinecone } from "@pinecone-database/pinecone";
+import fetch from "node-fetch";
 import "dotenv/config";
 
-const memoryFile = path.resolve("./agent_memory.json");
+// ============================
+// 🔹 Pinecone setup
+// ============================
+const pinecone = new Pinecone({
+  apiKey: process.env.PINECONE_API_KEY,
+});
 
+const index = pinecone.Index(process.env.PINECONE_INDEX || "ai-agent-memory");
+
+// ============================
 // 🧠 Store structured memory
+// ============================
 export async function storeMemory(
   id,
   text,
@@ -14,43 +23,77 @@ export async function storeMemory(
   metadata = {}
 ) {
   try {
-    // ✅ Ensure file exists
-    if (!fs.existsSync(memoryFile)) {
-      fs.writeFileSync(memoryFile, "[]");
-    }
+    // 1️⃣ Create embedding for the text
+    const embedRes = await fetch("https://api.openai.com/v1/embeddings", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "text-embedding-3-small",
+        input: text,
+      }),
+    });
 
-    // ✅ Read existing memories
-    const memories = JSON.parse(fs.readFileSync(memoryFile, "utf8"));
+    const embedData = await embedRes.json();
+    const embedding = embedData.data[0].embedding;
 
-    // ✅ Create new structured memory object
-    const newMemory = {
-      id,
-      text,
-      type, // e.g., "email", "meeting", "note"
-      source, // e.g., "gmail", "calendar", "chatbot"
-      metadata,
-      timestamp: new Date().toISOString(),
-    };
+    // 2️⃣ Store in Pinecone
+    await index.upsert([
+      {
+        id,
+        values: embedding,
+        metadata: {
+          text,
+          type,
+          source,
+          ...metadata,
+          timestamp: new Date().toISOString(),
+        },
+      },
+    ]);
 
-    // ✅ Append and save
-    memories.push(newMemory);
-    fs.writeFileSync(memoryFile, JSON.stringify(memories, null, 2));
-
-    console.log("✅ Structured memory stored!");
-    return "✅ Structured memory stored!";
+    console.log(`✅ Memory stored in Pinecone (ID: ${id})`);
+    return "✅ Memory stored in Pinecone!";
   } catch (err) {
-    console.error("❌ Error storing memory:", err.message);
-    return "❌ Failed to store memory.";
+    console.error("❌ Error storing memory in Pinecone:", err);
+    return "❌ Failed to store memory in Pinecone.";
   }
 }
 
-// 🧠 Retrieve stored memories (optional helper)
-export function readMemories() {
+// ============================
+// 🧠 Retrieve stored memories
+// ============================
+export async function readMemories(queryText) {
   try {
-    if (!fs.existsSync(memoryFile)) return [];
-    return JSON.parse(fs.readFileSync(memoryFile, "utf8"));
+    // Convert query to embedding
+    const embedRes = await fetch("https://api.openai.com/v1/embeddings", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "text-embedding-3-small",
+        input: queryText,
+      }),
+    });
+
+    const embedData = await embedRes.json();
+    const queryEmbedding = embedData.data[0].embedding;
+
+    // Search Pinecone
+    const results = await index.query({
+      vector: queryEmbedding,
+      topK: 5,
+      includeMetadata: true,
+    });
+
+    console.log(`🔍 Found ${results.matches.length} similar memories`);
+    return results.matches.map((m) => m.metadata);
   } catch (err) {
-    console.error("❌ Error reading memory file:", err.message);
+    console.error("❌ Error retrieving from Pinecone:", err);
     return [];
   }
 }

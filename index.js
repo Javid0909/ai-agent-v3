@@ -113,7 +113,6 @@ In the email:
 //  STEP 4️⃣ EMAIL SENDING
 // ===============================
 async function sendEmail(to, firstName, lastName, fruit) {
-  // ✅ Skip if already marked as sent
   const sheetData = await sheets.spreadsheets.values.get({
     spreadsheetId,
     range: `${sheetName}!A2:F`,
@@ -125,7 +124,6 @@ async function sendEmail(to, firstName, lastName, fruit) {
     return;
   }
 
-  // 🧠 Generate personalized email
   const htmlBody = await generateAIEmail(firstName, lastName, fruit);
   const subject = "Welcome to our AI Agent Workshop";
 
@@ -151,7 +149,7 @@ async function sendEmail(to, firstName, lastName, fruit) {
 
   console.log(`📧 Email sent to ${to}`);
 
-  // 🧠 Store memory after each email
+  // 🧠 Store memory in Pinecone
   await storeMemory(
     Date.now().toString(),
     `Email sent to ${firstName} ${lastName} (${to}) about ${fruit} AI Agent Workshop.`,
@@ -211,12 +209,13 @@ async function processSheet() {
 }
 
 // ===============================
-//  STEP 6️⃣ AUTO-RUN AGENT
+//  STEP 6️⃣ EXPORT FUNCTIONS (no auto-run)
 // ===============================
 export { sendEmail, processSheet };
 
-if (process.argv[1].includes("index.js")) {
-  console.log("⚙️  Starting end-to-end AI Email Agent...");
+// Manual run for local testing only
+if (process.env.MANUAL_RUN === "true") {
+  console.log("⚙️ Manual run initiated...");
   await processSheet();
-  console.log("🏁 All done — emails sent and stored in memory!");
+  console.log("🏁 Manual run completed!");
 }
